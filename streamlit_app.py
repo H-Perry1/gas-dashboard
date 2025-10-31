@@ -7,6 +7,7 @@ import statsmodels.api as sm
 import numpy as np
 import os
 import calendar
+import altair as alt
 
 API_KEY = "yJ2qCjteXo197dckEhJ6SFihWiJTERMdufptE5XO"
 PRICE_SERIES_ID = "RNGWHHD"
@@ -784,8 +785,16 @@ if show_bin_forecast:
             st.write(f"Median next-week return: {median_ret:.3f}%")
             st.write(f"10th pct: {p10:.3f}%, 90th pct: {p90:.3f}%")
 
-            st.markdown("Distribution of historical next-week returns for matching weeks:")
-            st.line_chart(pool.set_index('period')['next_ret_pct'])
+            st.markdown("Distribution of historical next-week returns for matching weeks (by date):")
+            df_bar = pool.dropna(subset=['next_ret_pct']).set_index('period').sort_index()[['next_ret_pct']]
+            if df_bar.empty:
+                st.info("No return data to plot.")
+            else:
+                # use string dates as categorical x-axis to avoid big gaps for missing weeks
+                df_bar = df_bar.reset_index()
+                df_bar['period_str'] = df_bar['period'].dt.strftime('%Y-%m-%d')
+                df_bar = df_bar.set_index('period_str')[['next_ret_pct']]
+                st.bar_chart(df_bar)
             st.dataframe(pool[['period','year','week','price','storage','price_pct','stor_pct','next_ret_pct']].sort_values('period', ascending=False).head(200).style.format({
                 "price":"{:.2f}","storage":"{:.1f}","price_pct":"{:.1f}","stor_pct":"{:.1f}","next_ret_pct":"{:.3f}"
             }))
