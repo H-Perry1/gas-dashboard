@@ -1,8 +1,8 @@
-# :earth_americas: GDP dashboard template
+# :earth_americas: US Nat Gas Dashboard
 
-A simple Streamlit app showing the GDP of different countries in the world.
+Storage, temperature and price analysis and forecasts
 
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://gdp-dashboard-template.streamlit.app/)
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://gas-analysis-dashboard.streamlit.app/)
 
 ### How to run it on your own machine
 
