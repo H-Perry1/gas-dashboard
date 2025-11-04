@@ -8,6 +8,7 @@ import numpy as np
 import os
 import calendar
 import altair as alt
+import plotly.graph_objects as go
 
 API_KEY = "yJ2qCjteXo197dckEhJ6SFihWiJTERMdufptE5XO"
 PRICE_SERIES_ID = "RNGWHHD"
@@ -320,7 +321,7 @@ if show_production:
 
     # raw weekly series (storage is weekly already)
     st.line_chart(pd.concat([df_production.set_index("period")["value"], forecast_series], axis=1))
-    st.dataframe(forecast_series.tail(10))
+    st.dataframe(forecast_series.head(10))
     st.subheader("Regression Summary")
     results_df = pd.DataFrame({
         'Coefficient': model.params,
@@ -329,12 +330,6 @@ if show_production:
         'p-value': model.pvalues
     })
     st.dataframe(results_df)
-
-
-
-
-    
-
 
 
 if show_storage:
@@ -392,6 +387,62 @@ if show_storage:
 
         st.markdown("Weekly storage table (entire year):")
         st.dataframe(display_df.style.format("{:.2f}"))
+    
+    st.subheader("Weekly Storage Change Actual vs Market Forecast")
+    df = pd.read_excel("data/forecast_surprise.xlsx")
+    
+    # --- Data cleaning ---
+    def to_number(x):
+        if isinstance(x, str) and 'B' in x:
+            return float(x.replace('B', '').replace('-', '-'))
+        try:
+            return float(x)
+        except:
+            return None
+
+    for col in ["Actual", "Forecast", "Previous"]:
+        df[col] = df[col].apply(to_number)
+
+    df["Release Date"] = pd.to_datetime(df["Release Date"])
+    df = df.sort_values("Release Date")
+
+    # --- Filter latest N ---
+    n = st.slider("Select number of latest releases", 5, len(df), 10)
+    df_recent = df.tail(n)
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Bar(
+        x=df_recent["Release Date"],
+        y=df_recent["Actual"],
+        name="Actual",
+        marker_color="royalblue",
+        opacity=0.85,
+        width=0.6
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=df_recent["Release Date"],
+        y=df_recent["Forecast"],
+        mode="markers",
+        name="Forecast",
+        marker=dict(color="orange", size=10, symbol="circle"),
+        connectgaps=False  # ensures no connecting lines between points
+    ))
+
+    fig.update_layout(
+        barmode="overlay",
+        xaxis_title="Release Date",
+        yaxis_title="BCf",
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        legend_title_text="Metric",
+        hovermode="x unified"
+    )
+    print(df_recent)
+
+    st.plotly_chart(fig, use_container_width=True)
+
 
 # ========================
 # FORECAST STORAGE USING REGRESSION
