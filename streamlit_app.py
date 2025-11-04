@@ -322,6 +322,16 @@ if show_production:
     # raw weekly series (storage is weekly already)
     st.line_chart(pd.concat([df_production.set_index("period")["value"], forecast_series], axis=1))
     st.dataframe(forecast_series.tail(10))
+    st.subheader("Regression Summary")
+    results_df = pd.DataFrame({
+        'Coefficient': model.params,
+        'Std Err': model.bse,
+        't': model.tvalues,
+        'p-value': model.pvalues
+    })
+    st.dataframe(results_df)
+
+
 
 
     
