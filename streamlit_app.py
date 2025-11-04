@@ -15,6 +15,10 @@ API_KEY = "yJ2qCjteXo197dckEhJ6SFihWiJTERMdufptE5XO"
 PRICE_SERIES_ID = "RNGWHHD"
 STORAGE_SERIES_ID = "NW2_EPG0_SWO_R48_BCF"
 PRODUCTION_SERIES_ID = "N9010US2"
+CANADA_IMPORT_SERIES_ID = "N9102CN2"
+MEXICO_EXPORT_SERIES_ID = "N9132MX2"
+LNG_EXPORT_SERIES_ID = "N9133US2"
+LNG_EXPORT_PRICE_SERIES_ID = "N9133US3"
 DB_FILE = "gas_data.db"
 T_BASE = 18.0
 LAT, LON = 29.7604, -95.3698  # Houston
@@ -56,6 +60,62 @@ def fetch_storage():
 @st.cache_data
 def fetch_production():
     url = f"https://api.eia.gov/v2/natural-gas/prod/sum/data/?api_key={API_KEY}&frequency=monthly&data[0]=value&facets[series][]={PRODUCTION_SERIES_ID}&sort[0][column]=period&sort[0][direction]=desc&offset=0&length=5000"
+    r = requests.get(url)
+    r.raise_for_status()
+    df = pd.DataFrame(r.json()["response"]["data"])[["period", "value"]]
+    df["period"] = pd.to_datetime(df["period"])
+    df["value"] = pd.to_numeric(df["value"], errors="coerce")
+    df = df.dropna().reset_index(drop=True)
+    conn = sqlite3.connect(DB_FILE)
+    df.to_sql("production", conn, if_exists="replace", index=False)
+    conn.close()
+    return df
+
+@st.cache_data
+def fetch_canada_import():
+    url = f"https://api.eia.gov/v2/natural-gas/move/impc/data/?api_key={API_KEY}&frequency=monthly&data[0]=value&facets[series][]={CANADA_IMPORT_SERIES_ID}&sort[0][column]=period&sort[0][direction]=desc&offset=0&length=5000"
+    r = requests.get(url)
+    r.raise_for_status()
+    df = pd.DataFrame(r.json()["response"]["data"])[["period", "value"]]
+    df["period"] = pd.to_datetime(df["period"])
+    df["value"] = pd.to_numeric(df["value"], errors="coerce")
+    df = df.dropna().reset_index(drop=True)
+    conn = sqlite3.connect(DB_FILE)
+    df.to_sql("production", conn, if_exists="replace", index=False)
+    conn.close()
+    return df
+
+@st.cache_data
+def fetch_mexico_export():
+    url = f"https://api.eia.gov/v2/natural-gas/move/expc/data/?api_key={API_KEY}&frequency=monthly&data[0]=value&facets[series][]={MEXICO_EXPORT_SERIES_ID}&sort[0][column]=period&sort[0][direction]=desc&offset=0&length=5000"
+    r = requests.get(url)
+    r.raise_for_status()
+    df = pd.DataFrame(r.json()["response"]["data"])[["period", "value"]]
+    df["period"] = pd.to_datetime(df["period"])
+    df["value"] = pd.to_numeric(df["value"], errors="coerce")
+    df = df.dropna().reset_index(drop=True)
+    conn = sqlite3.connect(DB_FILE)
+    df.to_sql("production", conn, if_exists="replace", index=False)
+    conn.close()
+    return df
+
+@st.cache_data
+def fetch_lng_export():
+    url = f"https://api.eia.gov/v2/natural-gas/move/expc/data/?api_key={API_KEY}&frequency=monthly&data[0]=value&facets[series][]={LNG_EXPORT_SERIES_ID}&sort[0][column]=period&sort[0][direction]=desc&offset=0&length=5000"
+    r = requests.get(url)
+    r.raise_for_status()
+    df = pd.DataFrame(r.json()["response"]["data"])[["period", "value"]]
+    df["period"] = pd.to_datetime(df["period"])
+    df["value"] = pd.to_numeric(df["value"], errors="coerce")
+    df = df.dropna().reset_index(drop=True)
+    conn = sqlite3.connect(DB_FILE)
+    df.to_sql("production", conn, if_exists="replace", index=False)
+    conn.close()
+    return df
+
+@st.cache_data
+def fetch_lng_export_price():
+    url = f"https://api.eia.gov/v2/natural-gas/move/expc/data/?api_key={API_KEY}&frequency=monthly&data[0]=value&facets[series][]={LNG_EXPORT_PRICE_SERIES_ID}&sort[0][column]=period&sort[0][direction]=desc&offset=0&length=5000"
     r = requests.get(url)
     r.raise_for_status()
     df = pd.DataFrame(r.json()["response"]["data"])[["period", "value"]]
@@ -128,7 +188,7 @@ st.sidebar.header("Data Options")
 hist_years = st.sidebar.slider("Years of historical data to use for percentiles", 1, 20, 5, 1)
 show_prices = st.sidebar.checkbox("Gas Prices")
 show_storage = st.sidebar.checkbox("Gas Storage")
-show_production = st.sidebar.checkbox("Gas Production")
+show_production = st.sidebar.checkbox("LNG, Production, Imports & Exports")
 show_temp_stats = st.sidebar.checkbox("Temperature Stats")
 
 # New: separate toggles for Monte Carlo and Regression forecasts
@@ -237,6 +297,23 @@ if show_prices:
 
 
 if show_production:
+    df_canada_import = fetch_canada_import()
+    st.subheader("US Monthly Pipeine Canadian Imports of Natural Gas")
+    st.line_chart(df_canada_import.set_index("period")["value"])
+
+    df_mexico_export = fetch_mexico_export()
+    st.subheader("US Monthly Pipeine Mexican Exports of Natural Gas")
+    st.line_chart(df_mexico_export.set_index("period")["value"])
+    
+    df_lng_export = fetch_lng_export()
+    st.subheader("US Monthly LNG Exports of Natural Gas")
+    st.line_chart(df_lng_export.set_index("period")["value"])
+
+    df_lng_export_price = fetch_lng_export_price()
+    st.subheader("US Monthly LNG Export Price of Natural Gas")
+    st.line_chart(df_lng_export_price.set_index("period")["value"])
+
+    # --- Monthly production with regression forecast ---
     df_production = fetch_production()
     weekly_production = df_production.sort_values("period").reset_index(drop=True)
     max_date = weekly_production['period'].max()
@@ -899,7 +976,7 @@ def compute_weekly_bins_and_returns(percentile_years=5):
     return df
 
 # UI: select month and bins, show expected return for matching historical weeks
-show_bin_forecast = st.sidebar.checkbox("Bin-based Monthly Expected Return")
+show_bin_forecast = st.sidebar.checkbox("Regime-based Monthly Expected Return")
 if show_bin_forecast:
     # slider that controls how many years are used to compute the monthly percentiles
     percentile_lookback_years = st.slider(
@@ -926,7 +1003,7 @@ if show_bin_forecast:
             cur_stor_pct = latest_row.get('stor_pct', np.nan)
             cur_price_bin = latest_row.get('price_bin', "unknown")
             cur_stor_bin = latest_row.get('stor_bin', "unknown")
-            st.subheader("Most recent weekly percentiles & bins")
+            st.subheader("Most recent weekly percentiles & regimes")
             st.markdown(
                 f"- Date: {pd.to_datetime(latest_period).date()}  \n"
                 f"- Price percentile: {cur_price_pct:.1f} → bin: **{cur_price_bin}**  \n"
@@ -942,8 +1019,8 @@ if show_bin_forecast:
                            format_func=lambda x: f"{x[0]:02d} - {x[1]}")
         target_month = sel[0]
 
-        price_bin = st.selectbox("Price ratio bin", options=["low","mid","high"], index=1)
-        stor_bin  = st.selectbox("Storage ratio bin", options=["low","mid","high"], index=1)
+        price_bin = st.selectbox("Price ratio regime", options=["low","mid","high"], index=1)
+        stor_bin  = st.selectbox("Storage ratio regime", options=["low","mid","high"], index=1)
 
         # filter historical rows that match month and bins and have next-week return available
         latest_year = int(df_bins['year'].max())
@@ -967,7 +1044,7 @@ if show_bin_forecast:
             p90 = np.percentile(pool['next_ret_pct'], 90)
 
             st.subheader("Expected next-week return for matching historical weeks")
-            st.write(f"Month: {calendar.month_name[target_month]}, Price bin: {price_bin}, Storage bin: {stor_bin}")
+            st.write(f"Month: {calendar.month_name[target_month]}, Price regime: {price_bin}, Storage regime: {stor_bin}")
             st.write(f"Samples (years used for matching): {n}")
             st.write(f"Mean next-week return: {mean_ret:.3f}%")
             st.write(f"Median next-week return: {median_ret:.3f}%")
