@@ -253,19 +253,20 @@ if show_production:
     # Regression to forecast production
     withdrawals = df_production.set_index("period")['value'].copy()
 
+    recent_months = st.slider("Months of recent data to use for production regression:", min_value=12, max_value=len(df_production), value=150, step=1)
+
     df_reg = pd.DataFrame(index=withdrawals.index)
     df_reg = df_reg.sort_index()
     df_reg['withdrawals'] = withdrawals
     df_reg['lag_1'] = withdrawals.shift(-1)
     df_reg['lag_12'] = withdrawals.shift(-12)
     df_reg['time_trend'] = np.arange(len(withdrawals))
-    df_reg = df_reg.iloc[-150:]
+    df_reg = df_reg.iloc[-recent_months:]
 
     # Month dummies
     df_months = pd.get_dummies(df_reg.index.month, prefix='month')
     df_months.index = df_reg.index
     df_reg = pd.concat([df_reg, df_months], axis=1)
-    print(df_reg)
 
     df_reg = df_reg.dropna()
 
@@ -281,14 +282,12 @@ if show_production:
 
     # Fit model
     model = sm.OLS(y, X).fit()
-    print(model.summary())
     
     # Forecast
     forecast_months = 48
 
     # Last observed date
     last_date = df_reg.index[-1]
-    print(df_reg)
 
     # Create a monthly datetime index starting from the next month
     forecast_index = pd.date_range(start=last_date + pd.offsets.MonthBegin(1), 
