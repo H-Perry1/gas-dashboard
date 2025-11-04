@@ -12,6 +12,7 @@ import altair as alt
 API_KEY = "yJ2qCjteXo197dckEhJ6SFihWiJTERMdufptE5XO"
 PRICE_SERIES_ID = "RNGWHHD"
 STORAGE_SERIES_ID = "NW2_EPG0_SWO_R48_BCF"
+PRODUCTION_SERIES_ID = "N9010US2"
 DB_FILE = "gas_data.db"
 T_BASE = 18.0
 LAT, LON = 29.7604, -95.3698  # Houston
@@ -47,6 +48,20 @@ def fetch_storage():
     df = df.dropna().reset_index(drop=True)
     conn = sqlite3.connect(DB_FILE)
     df.to_sql("storage", conn, if_exists="replace", index=False)
+    conn.close()
+    return df
+
+@st.cache_data
+def fetch_production():
+    url = f"https://api.eia.gov/v2/natural-gas/prod/sum/data/?api_key={API_KEY}&frequency=monthly&data[0]=value&facets[series][]={PRODUCTION_SERIES_ID}&sort[0][column]=period&sort[0][direction]=desc&offset=0&length=5000"
+    r = requests.get(url)
+    r.raise_for_status()
+    df = pd.DataFrame(r.json()["response"]["data"])[["period", "value"]]
+    df["period"] = pd.to_datetime(df["period"])
+    df["value"] = pd.to_numeric(df["value"], errors="coerce")
+    df = df.dropna().reset_index(drop=True)
+    conn = sqlite3.connect(DB_FILE)
+    df.to_sql("production", conn, if_exists="replace", index=False)
     conn.close()
     return df
 
@@ -111,6 +126,7 @@ st.sidebar.header("Data Options")
 hist_years = st.sidebar.slider("Years of historical data to use for percentiles", 1, 20, 5, 1)
 show_prices = st.sidebar.checkbox("Show Gas Prices")
 show_storage = st.sidebar.checkbox("Show Gas Storage")
+show_production = st.sidebar.checkbox("Show Gas Production")
 show_temp_stats = st.sidebar.checkbox("Show Temperature Stats")
 
 # New: separate toggles for Monte Carlo and Regression forecasts
@@ -134,6 +150,7 @@ if st.button("Fetch Latest Data"):
         # fetch and persist prices & storage (cached)
         df_prices = fetch_prices()
         df_storage = fetch_storage()
+        df_production = fetch_production()
 
         # fetch temperature history & forecast (cached) if storage returned rows
         try:
@@ -162,8 +179,8 @@ def load_table(table_name):
     return df
 
 if show_prices:
-    df_prices = load_table("prices")
-    st.subheader("Henry Hub Weekly Average Gas Prices (Percentile bands)")
+    df_prices = fetch_prices()
+    st.subheader("Henry Hub Weekly Average Gas Prices")
 
     # compute weekly average prices (week ending Saturday)
     weekly_prices = df_prices.resample('W-SAT', on='period')['value'].mean().reset_index()
@@ -220,10 +237,99 @@ if show_prices:
         st.markdown("Weekly table (entire year):")
         st.dataframe(display_df.style.format("{:.2f}"))
 
+if show_production:
+    df_production = fetch_production()
+    weekly_production = df_production.sort_values("period").reset_index(drop=True)
+    max_date = weekly_production['period'].max()
+    current_year = max_date.year
+
+    cur_weekly = weekly_production[weekly_production['period'].dt.year == current_year].copy()
+    cur_weekly['week'] = cur_weekly['period'].dt.isocalendar().week.astype(int)
+
+    # Historical data: previous years (up to hist_years prior years)
+    hist = weekly_production[(weekly_production['period'].dt.year < current_year) &
+                          (weekly_production['period'].dt.year >= (current_year - hist_years))].copy()
+    
+    # Regression to forecast production
+    withdrawals = df_production.set_index("period")['value'].copy()
+
+    df_reg = pd.DataFrame(index=withdrawals.index)
+    df_reg = df_reg.sort_index()
+    df_reg['withdrawals'] = withdrawals
+    df_reg['lag_1'] = withdrawals.shift(-1)
+    df_reg['lag_12'] = withdrawals.shift(-12)
+    df_reg['time_trend'] = np.arange(len(withdrawals))
+    df_reg = df_reg.iloc[-150:]
+
+    # Month dummies
+    df_months = pd.get_dummies(df_reg.index.month, prefix='month')
+    df_months.index = df_reg.index
+    df_reg = pd.concat([df_reg, df_months], axis=1)
+    print(df_reg)
+
+    df_reg = df_reg.dropna()
+
+    month_cols = [f'month_{i}' for i in range(1,13)]
+    df_reg[month_cols] = df_reg[month_cols].astype(int)
+
+    # -----------------------
+    # Train
+    # -----------------------
+    X = df_reg.drop(columns=['withdrawals'])
+    X = sm.add_constant(X)
+    y = df_reg['withdrawals']
+
+    # Fit model
+    model = sm.OLS(y, X).fit()
+    print(model.summary())
+    
+    # Forecast
+    forecast_months = 48
+
+    # Last observed date
+    last_date = df_reg.index[-1]
+    print(df_reg)
+
+    # Create a monthly datetime index starting from the next month
+    forecast_index = pd.date_range(start=last_date + pd.offsets.MonthBegin(1), 
+                                periods=forecast_months, 
+                                freq='M')
+    preds = []
+    last_obs = df_reg.iloc[-1].copy()
+
+    for i in range(forecast_months):
+        new_row = {}
+        new_row['const'] = 1
+        new_row['lag_1'] = last_obs['withdrawals'] if i == 0 else preds[-1]
+        if i < 12:
+            new_row['lag_12'] = df_reg['withdrawals'].iloc[-12 + i]
+        else:
+            new_row['lag_12'] = preds[-12]
+        new_row['time_trend'] = last_obs['time_trend'] + i + 1
+
+        # Month dummies
+        future_month = (last_obs.name.month + i + 1 - 1) % 12 + 1
+        for m in range(1, 13):
+            new_row[f'month_{m}'] = 1 if m == future_month else 0
+
+        pred = model.predict(pd.DataFrame([new_row]))[0]
+        preds.append(pred)
+
+    forecast_series = pd.Series(preds, index=forecast_index, name='Forecast')
+
+    st.subheader("US Monthly Gas Production & Regression Forecast 48 Months Ahead")
+
+    # raw weekly series (storage is weekly already)
+    st.line_chart(pd.concat([df_production.set_index("period")["value"], forecast_series], axis=1))
+    st.dataframe(forecast_series.tail(10))
+
+
+    
+
 
 
 if show_storage:
-    df_storage = load_table("storage")
+    df_storage = fetch_storage()
     st.subheader("US Weekly Gas Storage")
 
     # raw weekly series (storage is weekly already)
@@ -389,7 +495,7 @@ if show_mc_forecast:
     mc_hist_years = st.sidebar.slider("MC: years of historical movements to sample", 1, 20, hist_years, 1, key="mc_hist_years")
 
     # load storage table (independent of show_storage)
-    weekly_storage = load_table("storage").sort_values("period").reset_index(drop=True)
+    weekly_storage = fetch_storage().sort_values("period").reset_index(drop=True)
     if weekly_storage.empty:
         st.info("No storage data available. Run 'Fetch Latest Data' first.")
     else:
@@ -550,8 +656,8 @@ if show_percentile_ratio:
         1, 20, 5, 1, key="ratio_plot_years"
     )
 
-    ws = load_table("storage").sort_values("period").reset_index(drop=True)
-    pf = load_table("prices").sort_values("period").reset_index(drop=True)
+    ws = fetch_storage().sort_values("period").reset_index(drop=True)
+    pf = fetch_prices().sort_values("period").reset_index(drop=True)
 
     if ws.empty and pf.empty:
         st.info("No storage or price data available. Run 'Fetch Latest Data' first.")
@@ -661,8 +767,8 @@ def compute_weekly_bins_and_returns(percentile_years=5):
     (for each calendar month we compute percentiles across that month's values in the
     percentile_years lookback window).
     """
-    df_p = load_table("prices")
-    df_s = load_table("storage")
+    df_p = fetch_prices()
+    df_s = fetch_storage()
     if df_p.empty or df_s.empty:
         return None
 
