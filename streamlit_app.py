@@ -9,6 +9,7 @@ import os
 import calendar
 import altair as alt
 import plotly.graph_objects as go
+from eia_storage_surprise_prediction_model import predict_storage_surprise
 
 API_KEY = "yJ2qCjteXo197dckEhJ6SFihWiJTERMdufptE5XO"
 PRICE_SERIES_ID = "RNGWHHD"
@@ -442,6 +443,41 @@ if show_storage:
     print(df_recent)
 
     st.plotly_chart(fig, use_container_width=True)
+    pred_eia_surprise_data = predict_storage_surprise()
+    # Option 1: Display as a table
+    st.write("Latest Prediction:")
+    release_date = pred_eia_surprise_data['Release Date'].strftime('%Y-%m-%d')
+    direction = "Positive " if pred_eia_surprise_data['Pred_Direction'] == 1 else "Negative"
+    probability = f"{pred_eia_surprise_data['Pred_Prob_Correct']:.2%}"
+    st.markdown(
+        f"""
+        <div style="
+            background-color:#0d1117; 
+            padding:20px; 
+            border-radius:15px; 
+            color:#e6edf3; 
+            text-align:center;
+            border: 1px solid #1f6feb;
+            box-shadow: 0 0 15px rgba(31, 111, 235, 0.2);
+        ">
+            <h2 style="color:#58a6ff;">EIA Storage Surprise Prediction Details</h2>
+            <p style="font-size:18px;">
+                <strong>Release Date:</strong> {release_date}
+            </p>
+            <p style="font-size:18px;">
+                <strong>Predicted Direction:</strong> 
+                <span style="color:{'lightgreen' if direction.startswith('Positive') else '#ff4d4d'};">
+                    {direction}
+                </span>
+            </p>
+            <p style="font-size:18px;">
+                <strong>Probability Predicted Direction is Correct:</strong> 
+                <span style="color:#a5d6ff;">{probability}</span>
+            </p>
+        </div>
+        """, unsafe_allow_html=True
+    )
+
 
 
 # ========================
