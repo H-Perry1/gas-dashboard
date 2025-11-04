@@ -126,17 +126,17 @@ def fetch_temperature_forecast(start_date, end_date, lat=LAT, lon=LON, t_base=T_
 st.sidebar.header("Data Options")
 # number of prior years to include when computing historical percentiles (applies to prices & storage)
 hist_years = st.sidebar.slider("Years of historical data to use for percentiles", 1, 20, 5, 1)
-show_prices = st.sidebar.checkbox("Show Gas Prices")
-show_storage = st.sidebar.checkbox("Show Gas Storage")
-show_production = st.sidebar.checkbox("Show Gas Production")
-show_temp_stats = st.sidebar.checkbox("Show Temperature Stats")
+show_prices = st.sidebar.checkbox("Gas Prices")
+show_storage = st.sidebar.checkbox("Gas Storage")
+show_production = st.sidebar.checkbox("Gas Production")
+show_temp_stats = st.sidebar.checkbox("Temperature Stats")
 
 # New: separate toggles for Monte Carlo and Regression forecasts
-show_mc_forecast = st.sidebar.checkbox("Show Monte Carlo Storage Forecast")
-show_regression_forecast = st.sidebar.checkbox("Show Regression Storage Forecast")
+show_mc_forecast = st.sidebar.checkbox("Monte Carlo Storage Forecast")
+show_regression_forecast = st.sidebar.checkbox("Regression Storage Forecast")
 
 # New checkbox for percentile-ratio view
-show_percentile_ratio = st.sidebar.checkbox("Show Percentile Ratio (Storage & Price)")
+show_percentile_ratio = st.sidebar.checkbox("Percentile Ratio (Storage & Price)")
 
 # helper: percentile rank (0-100) using exclusive ties handling similar to common definition
 def percentile_rank(arr, value):
@@ -190,7 +190,6 @@ if show_prices:
 
     # summary table
     st.line_chart(weekly_prices.set_index("period")["value"])
-    st.dataframe(weekly_prices.tail(10))
 
     # --- Weekly averages for the ENTIRE year with percentile-based bands (last 5 years) ---
     max_date = weekly_prices['period'].max()
@@ -210,7 +209,7 @@ if show_prices:
         hist['week'] = hist['period'].dt.isocalendar().week.astype(int)
 
         # percentile half-width slider: 0..50 (default 25 => lower=25th, upper=75th)
-        half_width = st.sidebar.slider("Percentile half-width (use 25 for 25th/75th)", 0, 50, 25, 1)
+        half_width = st.slider("Percentile half-width (use 25 for 25th/75th)", 0, 50, 25, 1)
         low_pct = max(0, 50 - half_width) / 100.0
         mid_pct = 0.5
         high_pct = min(100, 50 + half_width) / 100.0
@@ -236,8 +235,6 @@ if show_prices:
         st.subheader(f"{current_year}: Weekly average prices (actual) vs historical percentile bands (last 5 years)")
         st.line_chart(display_df)
 
-        st.markdown("Weekly table (entire year):")
-        st.dataframe(display_df.style.format("{:.2f}"))
 
 if show_production:
     df_production = fetch_production()
@@ -322,7 +319,6 @@ if show_production:
 
     # raw weekly series (storage is weekly already)
     st.line_chart(pd.concat([df_production.set_index("period")["value"], forecast_series], axis=1))
-    st.dataframe(forecast_series.head(10))
     st.subheader("Regression Summary")
     results_df = pd.DataFrame({
         'Coefficient': model.params,
@@ -339,7 +335,6 @@ if show_storage:
 
     # raw weekly series (storage is weekly already)
     st.line_chart(df_storage.set_index("period")["value"])
-    st.dataframe(df_storage.tail(10))
 
     # --- Weekly averages for the ENTIRE year with percentile-based bands (last 5 years) ---
     weekly_storage = df_storage.sort_values("period").reset_index(drop=True)
@@ -360,7 +355,7 @@ if show_storage:
         hist['week'] = hist['period'].dt.isocalendar().week.astype(int)
 
         # percentile half-width slider: 0..50 (default 25 => lower=25th, upper=75th)
-        half_width_storage = st.sidebar.slider("Storage percentile half-width (use 25 for 25th/75th)", 0, 50, 25, 1)
+        half_width_storage = st.slider("Storage percentile half-width (use 25 for 25th/75th)", 0, 50, 25, 1)
         low_pct = max(0, 50 - half_width_storage) / 100.0
         mid_pct = 0.5
         high_pct = min(100, 50 + half_width_storage) / 100.0
@@ -386,8 +381,6 @@ if show_storage:
         st.subheader(f"{current_year}: Weekly storage (actual) vs historical percentile bands (last 5 years)")
         st.line_chart(display_df)
 
-        st.markdown("Weekly storage table (entire year):")
-        st.dataframe(display_df.style.format("{:.2f}"))
     
     st.subheader("Weekly Storage Change Actual vs Market Forecast")
     df = pd.read_excel("data/forecast_surprise.xlsx")
@@ -445,7 +438,6 @@ if show_storage:
     st.plotly_chart(fig, use_container_width=True)
     pred_eia_surprise_data = predict_storage_surprise()
     # Option 1: Display as a table
-    st.write("Latest Prediction:")
     release_date = pred_eia_surprise_data['Release Date'].strftime('%Y-%m-%d')
     direction = "Positive " if pred_eia_surprise_data['Pred_Direction'] == 1 else "Negative"
     probability = f"{pred_eia_surprise_data['Pred_Prob_Correct']:.2%}"
@@ -471,7 +463,7 @@ if show_storage:
                 </span>
             </p>
             <p style="font-size:18px;">
-                <strong>Probability Predicted Direction is Correct:</strong> 
+                <strong>Implied Probability Predicted Direction is Correct:</strong> 
                 <span style="color:#a5d6ff;">{probability}</span>
             </p>
         </div>
@@ -586,9 +578,9 @@ if show_mc_forecast:
     st.subheader("Monte Carlo Storage Forecast (sample historical moves by week-of-year)")
 
     # MC controls (sidebar)
-    mc_sims = st.sidebar.slider("MC simulations", 100, 5000, 1000, step=100, key="mc_sims")
-    mc_band = st.sidebar.slider("MC central band percentile (e.g. 90 -> 5th/50th/95th)", 50, 99, 90, 1, key="mc_band")
-    mc_hist_years = st.sidebar.slider("MC: years of historical movements to sample", 1, 20, hist_years, 1, key="mc_hist_years")
+    mc_sims = st.slider("MC simulations", 100, 5000, 1000, step=100, key="mc_sims")
+    mc_band = st.slider("MC central band percentile (e.g. 90 -> 5th/50th/95th)", 50, 99, 90, 1, key="mc_band")
+    mc_hist_years = st.slider("MC: years of historical movements to sample", 1, 20, hist_years, 1, key="mc_hist_years")
 
     # load storage table (independent of show_storage)
     weekly_storage = fetch_storage().sort_values("period").reset_index(drop=True)
@@ -672,7 +664,7 @@ if show_temp_stats:
             st.info(f"Not enough historical temperature data for the last {hist_years} years to compute percentiles.")
         else:
             # percentile half-width slider for HDD/CDD percentiles (applies to both)
-            pct_half = st.sidebar.slider("Temperature percentile half-width (e.g. 25 => 25th/50th/75th)", 0, 50, 25, 1)
+            pct_half = st.slider("Temperature percentile half-width (e.g. 25 => 25th/50th/75th)", 0, 50, 25, 1)
             low_q = max(0, 50 - pct_half) / 100.0
             mid_q = 0.5
             high_q = min(100, 50 + pct_half) / 100.0
@@ -723,9 +715,6 @@ if show_temp_stats:
             hdd_display = months_df[hdd_cols].sort_index()
             st.line_chart(hdd_display)
 
-            st.markdown("HDD monthly table:")
-            st.dataframe(hdd_display.style.format("{:.2f}"))
-
             # Chart CDD (include forecast line if available)
             st.subheader(f"{current_year}: Monthly CDD — actual vs historical percentiles (last {hist_years} yrs)")
             cdd_cols = ['cur_CDD','p_low_cdd','p50_cdd','p_high_cdd']
@@ -736,18 +725,16 @@ if show_temp_stats:
             ).sort_index()
             st.line_chart(cdd_display)
 
-            st.markdown("CDD monthly table:")
-            st.dataframe(cdd_display.style.format("{:.2f}"))
 
 # Top-level: Percentile ratio view (storage vs price) — runs whenever its checkbox is checked
 if show_percentile_ratio:
     # separate historical-window slider for the percentile-ratio view (used to build comparison pools)
-    ratio_hist_years = st.sidebar.slider(
+    ratio_hist_years = st.slider(
         "Percentile-ratio historical years (for weekly percentiles)",
         1, 20, hist_years, 1, key="ratio_hist_years"
     )
     # number of years to plot (including the most recent year)
-    ratio_plot_years = st.sidebar.slider(
+    ratio_plot_years = st.slider(
         "Years to plot for percentile-ratio (including most recent)",
         1, 20, 5, 1, key="ratio_plot_years"
     )
@@ -912,17 +899,16 @@ def compute_weekly_bins_and_returns(percentile_years=5):
     return df
 
 # UI: select month and bins, show expected return for matching historical weeks
-st.sidebar.header("Bin-based Monthly Forecast")
-show_bin_forecast = st.sidebar.checkbox("Show Bin-based Monthly Expected Return")
+show_bin_forecast = st.sidebar.checkbox("Bin-based Monthly Expected Return")
 if show_bin_forecast:
     # slider that controls how many years are used to compute the monthly percentiles
-    percentile_lookback_years = st.sidebar.slider(
+    percentile_lookback_years = st.slider(
         "Years to use for percentile calculation (per-month pools)",
         1, 20, hist_years, 1, key="percentile_lookback_years"
     )
 
     # slider that controls how many years of historical weeks are searched for matching samples
-    data_lookback_years = st.sidebar.slider(
+    data_lookback_years = st.slider(
         "Years of historical data to use when computing expected returns",
         1, 20, hist_years, 1, key="data_lookback_years"
     )
