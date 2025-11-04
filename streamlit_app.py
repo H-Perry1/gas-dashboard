@@ -19,7 +19,7 @@ DB_FILE = "gas_data.db"
 T_BASE = 18.0
 LAT, LON = 29.7604, -95.3698  # Houston
 
-st.title("US Gas Prices & Storage Analytics")
+st.title("US Gas Fundamentals Dashboard")
 
 # ========================
 # FETCH AND STORE DATA
