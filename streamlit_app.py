@@ -313,6 +313,30 @@ if show_production:
     st.subheader("US Monthly LNG Export Price of Natural Gas")
     st.line_chart(df_lng_export_price.set_index("period")["value"])
 
+    df_henryhub = fetch_prices()
+    df_henryhub = df_henryhub.set_index('period').sort_index()
+    df_lng_export_price = df_lng_export_price.set_index('period').sort_index()
+
+    # Resample LNG price weekly, forward fill missing weeks
+    df_lng_export_price = df_lng_export_price.resample('W').ffill()
+
+    # Reindex LNG prices to exactly match Henry Hub weekly periods
+    df_lng_export_price = df_lng_export_price.reindex(df_henryhub.index, method='ffill')
+
+    # Optionally, reset index if you want 'period' as a column again
+    df_lng_export_price = df_lng_export_price.reset_index()
+    df_henryhub = df_henryhub.reset_index()
+
+    # Merge the two on 'period'
+    df_merged = pd.merge(df_henryhub, df_lng_export_price, on='period', suffixes=('_henryhub', '_lng'))
+
+    # Compute the difference
+    df_merged['difference'] = df_merged['value_lng'] - df_merged['value_henryhub']
+    st.subheader("Weekly LNG Export Price minus Henry Hub Spot Price")
+    st.line_chart(df_merged.set_index("period")["difference"])
+    # Regression forecast
+
+
     # --- Monthly production with regression forecast ---
     df_production = fetch_production()
     weekly_production = df_production.sort_values("period").reset_index(drop=True)
