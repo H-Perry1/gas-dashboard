@@ -7,3 +7,4 @@ meteostat
 scikit-learn
 numpy
 statsmodels
+feedparser
