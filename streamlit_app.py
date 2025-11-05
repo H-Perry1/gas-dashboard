@@ -1146,7 +1146,10 @@ with right_col:
     RSS_FEEDS = [
         "https://www.eia.gov/rss/todayinenergy.xml",
         "https://www.eia.gov/rss/press_rss.xml",
+        "https://oilprice.com/rss/main",
+        "https://www.oilandgas360.com/feed"
+
     ]
-    KEYWORDS = ["gas", "LNG", "pipeline", "storage", "Henry Hub", "TTF", "NBP"]
+    KEYWORDS = ["gas", "LNG", "Henry Hub", "TTF", "NBP"]
 
     display_rss_feed(RSS_FEEDS, KEYWORDS)
