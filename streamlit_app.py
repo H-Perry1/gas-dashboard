@@ -197,6 +197,9 @@ show_regression_forecast = st.sidebar.checkbox("Regression Storage Forecast")
 
 # New checkbox for percentile-ratio view
 show_percentile_ratio = st.sidebar.checkbox("Percentile Ratio (Storage & Price)")
+show_bin_forecast = st.sidebar.checkbox("Regime-based Monthly Expected Return")
+
+show_commentary = st.sidebar.checkbox("Market Commentary")
 
 # helper: percentile rank (0-100) using exclusive ties handling similar to common definition
 def percentile_rank(arr, value):
@@ -1000,7 +1003,6 @@ def compute_weekly_bins_and_returns(percentile_years=5):
     return df
 
 # UI: select month and bins, show expected return for matching historical weeks
-show_bin_forecast = st.sidebar.checkbox("Regime-based Monthly Expected Return")
 if show_bin_forecast:
     # slider that controls how many years are used to compute the monthly percentiles
     percentile_lookback_years = st.slider(
@@ -1087,3 +1089,47 @@ if show_bin_forecast:
             st.dataframe(pool[['period','year','week','price','storage','price_pct','stor_pct','next_ret_pct']].sort_values('period', ascending=False).head(200).style.format({
                 "price":"{:.2f}","storage":"{:.1f}","price_pct":"{:.1f}","stor_pct":"{:.1f}","next_ret_pct":"{:.3f}"
             }))
+    
+if show_commentary:
+    # Page configuration
+    # Title
+    st.subheader("U.S. Natural Gas Winter Outlook")
+
+    # Sections
+    st.subheader("Demand")
+    st.write("""
+    - U.S. natural gas consumption is projected to rise in 2025, driven by residential and commercial heating.
+    - Additional demand is expected from increased power burn due to AI data centers and rising LNG exports, potentially adding significantly above baseline projections.
+    """)
+
+    st.subheader("Supply and Inventories")
+    st.write("""
+    - Production in the Lower 48 is elevated and expected to grow slightly.
+    - Working gas inventories are above the 5-year average, providing a buffer against short-term spikes.
+    """)
+
+    st.subheader("Supply-Demand Balance")
+    st.write("""
+    - Earlier projections indicated slight oversupply.
+    - Factoring in cold weather, higher power sector consumption, and LNG exports, the balance shifts toward neutral to slightly tight.
+    """)
+
+    st.subheader("Forecast Commentary")
+    st.write("""
+    - Using a regression-based forecast for storage under a colder weather assumption, the market appears well supplied; March storage is expected to reach normal historical levels.
+    - **End-of-winter storage scenarios:**
+    - Under historically normal weather and demand, storage could be relatively loose at around 2,050 Bcf.
+    - Under colder weather with higher demand (including AI-driven power burn and LNG exports), storage could fall to 1,900–1,700 Bcf.
+    - If the winter is milder than forecasted, or if AI/LNG-driven demand does not materialize as assumed, oversupply risks could emerge.
+    - Current market pricing seems to reflect well-supplied conditions, but there could be positive expected value in positions that benefit from potential oversupply, offering a favorable risk/reward skew.
+    """)
+
+    st.subheader("Outlook")
+    st.write("""
+    - The market is expected to tighten during the winter due to elevated demand, though above-average inventories mitigate extreme supply constraints.
+    - Price sensitivity will increase if the winter is colder than forecasted or LNG exports surge beyond expectations.
+    """)
+
+# Sidebar with descriptive sentiment
+st.sidebar.header("Supply-Demand Tightness")
+st.sidebar.write("Current outlook: Neutral to slightly tight, with potential for increased pressure if winter demand is higher than expected. Oversupply risks exist if weather is milder or incremental demand does not materialize.")
