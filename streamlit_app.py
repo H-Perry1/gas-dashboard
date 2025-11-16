@@ -11,6 +11,7 @@ import altair as alt
 import plotly.graph_objects as go
 from eia_storage_surprise_prediction_model import predict_storage_surprise
 from rss_newsfeed import display_rss_feed  # assuming you saved the function
+from storage_model import dp_gas_storage_stochastic
 
 API_KEY = "yJ2qCjteXo197dckEhJ6SFihWiJTERMdufptE5XO"
 PRICE_SERIES_ID = "RNGWHHD"
@@ -200,6 +201,7 @@ with main_col:
     # New: separate toggles for Monte Carlo and Regression forecasts
     show_mc_forecast = st.sidebar.checkbox("Monte Carlo Storage Forecast")
     show_regression_forecast = st.sidebar.checkbox("Regression Storage Forecast")
+    show_forward_forecast = st.sidebar.checkbox("Forward Curve Implied Storage Forecast")
 
     # New checkbox for percentile-ratio view
     show_percentile_ratio = st.sidebar.checkbox("Percentile Ratio (Storage & Price)")
@@ -580,6 +582,7 @@ with main_col:
             """, unsafe_allow_html=True
         )
 
+                # -----------------------------
 
 
     # ========================
@@ -673,6 +676,160 @@ with main_col:
     # The regression forecast is now run and displayed once later under the "show_regression_forecast" handling.
 
     # Button to trigger regression forecast (removed redundant button; regression runs when checkbox is checked)
+    if show_forward_forecast:
+        with st.spinner("Forecasting storage from forward curve..."):
+            st.title("Henry Hub Market-Implied Gas Storage Forecast")
+            st.markdown("""
+            This simulates **U.S. natural gas storage evolution** based on the **current forward curve** and storage operational constraints.
+
+            **Features:**
+            - Computes the **optimal inventory path** using a stochastic dynamic programming (DP) model.
+            - Calculates **shadow value**: the marginal NPV of storing an extra unit of gas each month.
+            - Plots **inventory progression**, **shadow value**, and **forward prices** on the same interactive chart.
+            - Highlights months where storage is more/less valuable, helping identify:
+                - **Inject / Buy**: when shadow value is positive.
+                - **Hold**: when shadow value is near zero.
+                - **Withdraw / Sell**: when shadow value is negative.
+            - Allows **interactive adjustment** of storage assumptions, forward curve, injection/withdrawal limits, and costs.
+            
+            Use this tool to gain a **market-implied view of gas storage**, seasonal tightness, and optionality opportunities.
+            """)
+
+
+            # -----------------------------
+            # Inputs
+            # -----------------------------
+            I0 = st.number_input("Initial Storage (BCF)", value=3960)
+            I_max = st.number_input("Max Storage (BCF)", value=4000)
+            U_max = st.number_input("Max Injection per month (BCF)", value=500)
+            W_max = st.number_input("Max Withdrawal per month (BCF)", value=900)
+            I_terminal = st.number_input("Required End Value for Storage", value=3950)
+            switching_cost = st.number_input("Switching Cost ($/MMBtu)", value=0.02, step=0.01)
+
+            forward_curve = st.text_area(
+                "Forward Curve (USD/MMBtu, comma-separated)", 
+                value="4.2, 4.509, 4.724, 4.394, 3.896, 3.747, 3.767, 3.910, 4.079, 4.129, 4.102, 4.138, 4.343"
+            )
+            forward_curve = [float(x.strip()) for x in forward_curve.split(",")]
+
+            # -----------------------------
+            # Ratchet / DP settings
+            # -----------------------------
+            inject_levels = [0.0, 0.5, 0.8, 1.0]
+            inject_ratios = [1.0, 0.8, 0.5, 0.5]
+            withdraw_levels = [0.0, 0.2, 0.5, 1.0]
+            withdraw_ratios = [0.5, 0.5, 0.8, 1.0]
+
+            # -----------------------------
+            # Run stochastic DP
+            # -----------------------------
+            results = dp_gas_storage_stochastic(
+                forward_prices=forward_curve,
+                I0=I0,
+                I_max=I_max,
+                U_max=U_max,
+                W_max=W_max,
+                inject_levels=inject_levels,
+                inject_ratios=inject_ratios,
+                withdraw_levels=withdraw_levels,
+                withdraw_ratios=withdraw_ratios,
+                switching_cost=switching_cost,
+                ratchet_method='linear',
+                n_inventory_steps=101,
+                r_annual=0.05,
+                n_paths=1000,
+                sigma=1,
+                dt=30/365,
+                I_terminal=I_terminal
+            )
+
+            # -----------------------------
+            # Compute shadow value
+            # -----------------------------
+            inv = np.array(results['inventory'])
+            npv = np.array(results['cumulative_npv'])
+
+            # Align lengths
+            min_len = min(len(inv), len(npv))
+            inv = inv[:min_len]
+            npv = npv[:min_len]
+
+            dNPV_dt = np.gradient(npv)
+            dI_dt = np.gradient(inv)
+            dI_dt[dI_dt == 0] = np.nan  # avoid division by zero
+
+            shadow_value = dNPV_dt / dI_dt
+
+            # -----------------------------
+            # Plotly chart
+            # -----------------------------
+            days = np.arange(min_len)
+
+            fig = go.Figure()
+
+            # Inventory line
+            fig.add_trace(go.Scatter(
+                x=days,
+                y=inv,
+                mode='lines+markers',
+                name='Inventory (BCF)',
+                line=dict(color='red', width=3)
+            ))
+
+            # Shadow value line
+            fig.add_trace(go.Scatter(
+                x=days,
+                y=shadow_value,
+                mode='lines+markers',
+                name='Shadow Value ($/MMBtu)',
+                line=dict(color='blue', width=2),
+                yaxis='y2'
+            ))
+
+            # Max/Min storage
+            fig.add_trace(go.Scatter(
+                x=days,
+                y=[I_max]*min_len,
+                mode='lines',
+                name='Max Storage',
+                line=dict(color='black', width=2, dash='dot')
+            ))
+
+            fig.add_trace(go.Scatter(
+                x=days,
+                y=[0]*min_len,
+                mode='lines',
+                name='Min Storage',
+                line=dict(color='grey', width=2, dash='dot')
+            ))
+
+            # Forward curve
+            fig.add_trace(go.Scatter(
+                x=np.arange(len(forward_curve)),
+                y=forward_curve,
+                mode='lines+markers',
+                name='Forward Price (USD/MMBtu)',
+                line=dict(color='orange', width=2, dash='dash'),
+                yaxis='y2'
+            ))
+
+            fig.update_layout(
+                title='Henry Hub Gas Storage & Shadow Value Forecast',
+                xaxis_title='Month',
+                yaxis=dict(title='Inventory (BCF)', side='left'),
+                yaxis2=dict(title='Shadow Value / Forward Price ($/MMBtu)', overlaying='y', side='right'),
+                template='plotly_white'
+            )
+
+            st.plotly_chart(fig, use_container_width=True)
+
+            # -----------------------------
+            # Key results
+            # -----------------------------
+            st.write(f"Initial storage: {I0} BCF")
+            st.write(f"Final storage: {results['inventory'][-1]:.2f} BCF")
+
+
     if show_regression_forecast:
         with st.spinner("Forecasting storage..."):
             forecast = forecast_storage_regression()
